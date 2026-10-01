@@ -1,3 +1,6 @@
-streamlit
-python-docx
-openpyxl
+streamlit>=1.50,<2
+gspread>=6.2,<7
+google-auth>=2.41,<3
+openpyxl>=3.1,<4
+python-docx>=1.2,<2
+python-dateutil>=2.9,<3

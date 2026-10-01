@@ -4,11 +4,14 @@ import re
 import shutil
 import tempfile
 import time
+from pathlib import Path
 
 import streamlit as st
 import streamlit.components.v1 as components
 
-import engine
+import engine as engine
+
+CIE_V25_BUILD = "V2.5.3 — EMBEDDED LOGO + NEW MUSIC"
 
 st.set_page_config(
     page_title="Phiếu Nhận Xét Học Viên | CIE VIETNAM",
@@ -198,49 +201,86 @@ if getattr(engine, "DEFAULT_BG_B64", ""):
     )
 
 # =========================================================================
-# Logo he thong - CO DINH DUY NHAT, khong ai chinh sua duoc qua giao dien
 # =========================================================================
-if "logo_path" not in st.session_state:
-    tmp_dir = tempfile.mkdtemp()
-    logo_path = os.path.join(tmp_dir, "logo.png")
-    with open(logo_path, "wb") as f:
-        f.write(base64.b64decode(engine.DEFAULT_LOGO_B64))
-    st.session_state["logo_path"] = logo_path
+# LOGO MỞ ĐẦU - NHÚNG TRỰC TIẾP TRONG engine.py
+# Không phụ thuộc assets/ và không cho upload logo tùy ý.
+# =========================================================================
+if "selected_logo" not in st.session_state:
+    st.session_state["selected_logo"] = None
 
-engine.COMPANY_LOGO_PATH = st.session_state["logo_path"]
+if st.session_state["selected_logo"] is None:
+    st.markdown(
+        """
+        <div style="text-align:center; padding:28px 10px 10px;">
+          <div style="font-size:1.8rem; font-weight:800; color:#1f4e79; margin-bottom:6px;">
+            CHỌN LOGO ĐỂ BẮT ĐẦU
+          </div>
+          <div style="color:#6b7280; font-size:.95rem;">
+            Chọn SIT hoặc CIE để bắt đầu hệ thống. Logo được nhúng cố định trong engine.
+          </div>
+        </div>
+        """, unsafe_allow_html=True
+    )
+    col1, col2 = st.columns(2, gap="large")
+    with col1:
+        st.image(base64.b64decode(engine.DEFAULT_SIT_LOGO_B64), use_container_width=True)
+        if st.button("▶  CHỌN SIT ĐỂ BẮT ĐẦU", type="primary", use_container_width=True, key="choose_sit"):
+            st.session_state["selected_logo"] = "SIT"
+            st.rerun()
+    with col2:
+        st.image(base64.b64decode(engine.DEFAULT_CIE_LOGO_B64), use_container_width=True)
+        if st.button("▶  CHỌN CIE ĐỂ BẮT ĐẦU", type="primary", use_container_width=True, key="choose_cie"):
+            st.session_state["selected_logo"] = "CIE"
+            st.rerun()
+    st.info("Bắt buộc chọn một logo để bắt đầu.")
+    st.stop()
 
+selected_logo_b64 = engine.get_logo_b64(st.session_state["selected_logo"])
+logo_tmp_dir = tempfile.mkdtemp()
+selected_logo_path = os.path.join(logo_tmp_dir, f"{st.session_state['selected_logo'].lower()}_logo.png")
+with open(selected_logo_path, "wb") as f:
+    f.write(base64.b64decode(selected_logo_b64))
+engine.COMPANY_LOGO_PATH = selected_logo_path
+st.session_state["logo_path_for_build"] = selected_logo_path
+
+col_logo, col_info = st.columns([1, 3])
+with col_logo:
+    st.image(base64.b64decode(selected_logo_b64), width=150)
+with col_info:
+    st.success(
+        f"Đã chọn logo **{st.session_state['selected_logo']}**. "
+        "Logo này sẽ được dùng cho các phiếu xuất trong phiên làm việc."
+    )
+    if st.button("↩ Chọn lại logo", key="change_logo"):
+        st.session_state["selected_logo"] = None
+        st.rerun()
+
+# NHẠC NỀN - NHÚNG TRỰC TIẾP TRONG engine.DEFAULT_MUSIC_B64
+# Không cần static/background.mp3.
 # =========================================================================
-# Man hinh cho (splash) - hien logo truoc khi vao giao dien chinh.
-# Chi hien 1 lan moi phien lam viec (session_state luu lai, khong lap lai
-# moi khi nguoi dung bam nut trong app).
-# =========================================================================
-if "splash_shown" not in st.session_state:
-    splash = st.empty()
-    with splash.container():
-        st.markdown(
-            f"""
-            <div style="
-                position: fixed; inset: 0; z-index: 99999;
-                background: linear-gradient(135deg, #1f4e79 0%, #2f6fb0 55%, #c0392b 130%);
-                display: flex; flex-direction: column; align-items: center; justify-content: center;">
-                <img src="data:image/png;base64,{engine.DEFAULT_LOGO_B64}"
-                     style="width: 130px; margin-bottom: 18px; animation: pulse 1.4s ease-in-out infinite;">
-                <div style="color: white; font-family: 'Be Vietnam Pro', sans-serif; font-weight: 600; font-size: 0.95rem; letter-spacing: 0.5px;">
-                    Đang tải hệ thống...
-                </div>
-            </div>
-            <style>
-            @keyframes pulse {{
-                0%, 100% {{ transform: scale(1); opacity: 1; }}
-                50% {{ transform: scale(1.08); opacity: 0.85; }}
-            }}
-            </style>
-            """,
-            unsafe_allow_html=True,
-        )
-    time.sleep(1.3)
-    splash.empty()
-    st.session_state["splash_shown"] = True
+if getattr(engine, "DEFAULT_MUSIC_B64", ""):
+    components.html(
+        f"""
+        <div style="display:flex;align-items:center;gap:10px;font-family:'Be Vietnam Pro',sans-serif;">
+          <button id="music-toggle-btn" style="width:42px;height:42px;border-radius:50%;border:none;background:linear-gradient(120deg,#1f4e79,#2f6fb0);color:white;font-size:18px;cursor:pointer;box-shadow:0 4px 12px rgba(31,78,121,.30);">🔊</button>
+          <span style="font-size:.85rem;color:#4b5563;">Nhạc nền · Relax with my cat · 10 phút</span>
+        </div>
+        <audio id="bg-audio" autoplay loop preload="auto">
+          <source src="data:audio/mpeg;base64,{engine.DEFAULT_MUSIC_B64}" type="audio/mpeg">
+        </audio>
+        <script>
+        const audio=document.getElementById('bg-audio');
+        const btn=document.getElementById('music-toggle-btn');
+        audio.volume=.28;
+        audio.play().then(()=>{{btn.textContent='🔊';}}).catch(()=>{{btn.textContent='🔇';}});
+        btn.addEventListener('click',()=>{{
+          if(audio.paused){{audio.play().then(()=>{{btn.textContent='🔊';}}).catch(()=>{{}});}}
+          else{{audio.pause();btn.textContent='🔇';}}
+        }});
+        </script>
+        """,
+        height=55,
+    )
 
 if "uploader_key" not in st.session_state:
     st.session_state["uploader_key"] = 0
@@ -260,7 +300,7 @@ def build_zip_for_students(students):
     tmp_dir = tempfile.mkdtemp()
     used_names = set()
     for s in students:
-        doc = engine.build_phieu(s)
+        doc = engine.build_phieu(s, logo_path=st.session_state.get("logo_path_for_build", engine.COMPANY_LOGO_PATH))
         lop = safe_name(s["class_info"].get("lop") or s["class_info"].get("sheet") or "Lop")
         ten = safe_name(s["name"])
         base = f"{lop}__{ten}"
@@ -318,50 +358,31 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Nhac nen he thong - CO DINH (nhung san trong engine.py), tu dong tai, khong can upload.
-# (Luu y ky thuat: components.html chay trong 1 iframe rieng cua Streamlit,
-#  nen KHONG dung position:fixed o day - iframe fixed=0x0 se lam nut bi an mat.
-#  Thay vao do dat widget noi lien trong dong chay cua trang, voi kich thuoc du hien nut.)
-# =========================================================================
-if getattr(engine, "DEFAULT_MUSIC_B64", ""):
-    music_b64 = engine.DEFAULT_MUSIC_B64
+# Nhac nen he thong - CO DINH
+# File nhac duoc dong goi cung ung dung, khong nhung base64 vao engine.
+MUSIC_PATH = Path(__file__).parent / "static" / "background.mp3"
+if MUSIC_PATH.exists():
     components.html(
         f"""
-        <div style="display:flex; align-items:center; gap:10px; font-family: 'Be Vietnam Pro', sans-serif;">
-          <button id="music-toggle-btn" style="
-              width: 42px; height: 42px; border-radius: 50%; border: none;
-              background: linear-gradient(120deg, #1f4e79, #2f6fb0); color: white;
-              font-size: 18px; cursor: pointer; box-shadow: 0 4px 12px rgba(31,78,121,0.30);
-              flex-shrink: 0;">
-            🔇
-          </button>
-          <span style="font-size: 0.85rem; color: #4b5563;">Nhạc nền (bấm để bật/tắt)</span>
+        <div style="display:flex; align-items:center; gap:10px; font-family:'Be Vietnam Pro',sans-serif;">
+          <button id="music-toggle-btn" style="width:42px;height:42px;border-radius:50%;border:none;background:linear-gradient(120deg,#1f4e79,#2f6fb0);color:white;font-size:18px;cursor:pointer;box-shadow:0 4px 12px rgba(31,78,121,.30);">🔇</button>
+          <span style="font-size:.85rem;color:#4b5563;">Nhạc nền · Relax with my cat (bấm để bật/tắt)</span>
         </div>
-        <audio id="bg-audio" loop>
-          <source src="data:audio/mp3;base64,{music_b64}" type="audio/mpeg">
+        <audio id="bg-audio" loop preload="auto">
+          <source src="/app/static/background.mp3" type="audio/mpeg">
         </audio>
         <script>
-        const audio = document.getElementById('bg-audio');
-        const btn = document.getElementById('music-toggle-btn');
-        audio.volume = 0.4;
-        let playing = false;
-        audio.muted = true;
-        audio.play().catch(() => {{}});
-        btn.addEventListener('click', () => {{
-            if (!playing) {{
-                audio.muted = false;
-                audio.play();
-                btn.textContent = '🔊';
-                playing = true;
-            }} else {{
-                audio.pause();
-                btn.textContent = '🔇';
-                playing = false;
-            }}
+        const audio=document.getElementById('bg-audio');
+        const btn=document.getElementById('music-toggle-btn');
+        audio.volume=.28;
+        let playing=false;
+        btn.addEventListener('click',()=>{{
+          if(!playing){{audio.play().then(()=>{{btn.textContent='🔊';playing=true;}}).catch(()=>{{}});}}
+          else{{audio.pause();btn.textContent='🔇';playing=false;}}
         }});
         </script>
         """,
-        height=50,
+        height=52,
     )
 
 
@@ -383,6 +404,20 @@ st.markdown('<div class="upload-card">', unsafe_allow_html=True)
 st.markdown("### 📁 Upload file điểm để bắt đầu")
 st.caption("Hỗ trợ file 1 lớp hoặc cả workbook nhiều lớp (.xlsx). Xử lý xong sẽ tự động tải file .zip về máy.")
 
+assessment_type = st.selectbox(
+    "Loại đánh giá",
+    [
+        "Initial", "Final", "Certificate", "Other"
+    ],
+    index=1,
+    format_func=lambda x: {
+        "Initial": "🟢 Đánh giá đầu vào",
+        "Final": "🏁 Cuối khóa",
+        "Certificate": "🏅 Thi chứng chỉ",
+        "Other": "📌 Khác",
+    }.get(x, x),
+)
+
 uploaded_file = st.file_uploader(
     "Chọn file Excel",
     type=["xlsx"],
@@ -398,12 +433,52 @@ if uploaded_file is not None:
         f.write(uploaded_file.getbuffer())
 
     try:
-        progress.progress(30, text="Đang tính điểm, xếp loại, chọn nhận xét phù hợp...")
-        students = engine.process_workbook(tmp_path)
+        progress.progress(20, text="Đang kết nối Database CIE...")
+
+        # Streamlit Cloud supports either a JSON string secret or a TOML table.
+        # Prefer the explicit JSON key, but also accept [gcp_service_account].
+        gcp_secret = st.secrets.get("gcp_service_account_json", None)
+        if not gcp_secret:
+            try:
+                gcp_secret = dict(st.secrets.get("gcp_service_account", {}))
+            except Exception:
+                gcp_secret = None
+
+        operator = str(st.session_state.get("operator", ""))
+        if not gcp_secret:
+            raise RuntimeError(
+                "Chưa cấu hình Google Sheets trong Streamlit Secrets. "
+                "Hãy thêm gcp_service_account_json hoặc [gcp_service_account]."
+            )
+
+        progress.progress(35, text="Đang đọc lịch sử học viên và tính kết quả hiện tại...")
+        students, sync_result = engine.process_and_sync_workbook(
+            tmp_path,
+            gcp_secret,
+            assessment_type=assessment_type,
+            operator=operator,
+        )
+        progress.progress(60, text="Đã đồng bộ dữ liệu lên Google Sheets...")
+        st.session_state["last_sync_result"] = sync_result
     except Exception as e:
         progress.empty()
-        st.error(f"❌ Không đọc được file này: {e}")
+        msg = str(e)
+        # Keep deployment errors useful without ever displaying credential contents.
+        if "SpreadsheetNotFound" in msg or "Permission" in msg or "not found" in msg.lower():
+            st.error(
+                "❌ Không truy cập được Google Sheet. Hãy kiểm tra: "
+                "(1) Sheet đã được share cho email service account với quyền Editor; "
+                "(2) GOOGLE_SHEET_URL đúng; (3) Google Sheets/Drive API đã bật."
+            )
+        elif "credentials" in msg.lower() or "service_account" in msg.lower() or "JSON" in msg:
+            st.error(
+                "❌ Cấu hình Google Service Account chưa hợp lệ. "
+                "Kiểm tra Streamlit Secrets; không cần gửi private key vào chat."
+            )
+        else:
+            st.error(f"❌ Không đọc/đồng bộ được file này: {msg}")
         students = []
+        sync_result = {}
 
     if students:
         progress.progress(70, text="Đang tạo phiếu Word cho từng học viên...")
@@ -416,7 +491,16 @@ if uploaded_file is not None:
         zip_filename = f"PhieuNhanXet_{st.session_state['batch_counter']:02d}_{safe_name(uploaded_file.name).replace('.xlsx','')}.zip"
         st.session_state["history"].append((uploaded_file.name, len(students)))
 
-        st.success(f"✔ Đã tạo **{len(students)} phiếu** từ file **{uploaded_file.name}**. Đang tự động tải về...")
+        st.success(f"✔ Đã tạo **{len(students)} phiếu** từ file **{uploaded_file.name}** · Loại: **{assessment_type}**.")
+        if sync_result:
+            st.info(
+                "Database: "
+                f"mới **{sync_result.get('new', 0)}** · "
+                f"đã có **{sync_result.get('existing', 0)}** · "
+                f"cập nhật **{sync_result.get('changed', 0)}** · "
+                f"trùng trong file **{sync_result.get('duplicates_in_file', 0)}** · "
+                f"cần xác nhận **{sync_result.get('ambiguous', 0)}**"
+            )
         st.balloons()
         trigger_browser_download(zip_filename, zip_data)
 
